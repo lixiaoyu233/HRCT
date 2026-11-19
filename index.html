@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#0f6f68">
+  <meta name="description" content="纤护呼吸公益项目 · HRCT 筛查目标人群自查表：初步判断是否符合筛查条件，并了解报销需要准备的材料。">
+  <title>纤护呼吸公益项目 · HRCT 筛查目标人群自查表</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f6f68'/%3E%3Cpath d='M20 40c0-9 5-18 12-22 7 4 12 13 12 22 0 6-5 10-12 10s-12-4-12-10z' fill='none' stroke='%23fff' stroke-width='3.2'/%3E%3Cpath d='M32 20v30' stroke='%23fff' stroke-width='3.2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-head">
+    <div class="site-head__inner">
+      <p class="site-head__org" id="org">北京开创者慈善基金会</p>
+      <h1 class="site-head__title">纤护呼吸公益项目</h1>
+      <p class="site-head__sub">HRCT 筛查目标人群自查表</p>
+    </div>
+    <div class="progress" id="progress" hidden>
+      <div class="progress__meta">
+        <span class="progress__step" id="progressStep"></span>
+        <span class="progress__pct" id="progressPct"></span>
+      </div>
+      <div class="progress__track"><div class="progress__bar" id="progressBar"></div></div>
+    </div>
+  </header>
+
+  <main class="page" id="app" aria-live="polite"></main>
+
+  <noscript>
+    <p class="noscript">本页面需要开启 JavaScript 才能进行自查，请在浏览器设置中允许运行脚本。</p>
+  </noscript>
+
+  <footer class="site-foot">
+    <p>本页仅用于初步自查，不构成医学诊断，不能替代医生评估。<br>是否入组以项目点医生评估及 HRCT 检查结果为准。</p>
+    <p class="site-foot__ver">规则版本 v1.0 · 生效 2026-11-19</p>
+  </footer>
+
+  <script src="logic.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
