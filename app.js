@@ -24,12 +24,10 @@
     sscStart: { y: null, m: null },
     sscUnknown: false,
     ra: {},
-    exclusions: {},
-    materialsChecked: {}
+    exclusions: {}
   };
 
   var errorMsg = '';
-  var toastTimer = null;
 
   /* ---------------- 工具 ---------------- */
 
@@ -80,7 +78,6 @@
       state.sscUnknown = !!s.sscUnknown;
       state.ra = s.ra && typeof s.ra === 'object' ? s.ra : {};
       state.exclusions = s.exclusions && typeof s.exclusions === 'object' ? s.exclusions : {};
-      state.materialsChecked = s.materialsChecked && typeof s.materialsChecked === 'object' ? s.materialsChecked : {};
       state.step = typeof s.step === 'number' ? s.step : 0;
       if (state.step < 0 || state.step > 4) state.step = 0;
     } catch (e) {
@@ -144,7 +141,7 @@
   /* ---------------- 封面 ---------------- */
 
   function materialsList() {
-    return '<ul class="materials">' + R.materials.map(function (m) {
+    return '<ul class="mat-list mat-list--fold">' + R.materials.map(function (m) {
       return '<li>' + esc(m) + '</li>';
     }).join('') + '</ul>';
   }
@@ -154,7 +151,7 @@
       '<p class="kicker">' + esc(R.org) + '</p>' +
       '<h2 class="cover-title">' + esc(R.projectName) + '</h2>' +
       '<p class="cover-sub">HRCT 筛查目标人群自查表</p>' +
-      '<p class="cover-lead">本项目面向已确诊的<b>弥漫型系统性硬化症（SSc）</b>或<b>类风湿关节炎（RA）</b>患者，帮助您初步判断是否符合 HRCT 筛查条件。</p>' +
+      '<p class="cover-lead">本项目面向已确诊的<b>弥漫型系统性硬化症（SSc）</b>或<b>类风湿关节炎（RA）</b>患者，帮助您初步判断是否符合<b>免费 HRCT</b> 筛查条件。</p>' +
       '<ul class="facts">' +
         '<li><b>约 3 分钟</b>，逐项选择即可</li>' +
         '<li><b>不收集任何个人信息</b>，所有判断都在您的手机上完成</li>' +
@@ -164,7 +161,6 @@
       '<details class="fold">' +
         '<summary>报销需要准备哪些材料？</summary>' +
         materialsList() +
-        '<p class="fold__note">本页面不收集、不上传、不保存任何材料，请勿在此页上传证件照片。</p>' +
       '</details>'
     );
   }
@@ -175,31 +171,37 @@
     var now = today();
     var maxY = now.getFullYear();
     var y = state.birth.y, m = state.birth.m, d = state.birth.d;
+    var yearOk = y && y >= 1900 && y <= maxY;
 
-    var years = '<option value="">年</option>';
-    for (var i = maxY; i >= maxY - 100; i--) years += opt(i, i + ' 年', y === i);
+    var yearInput = '<input class="date-input" id="by" type="text" inputmode="numeric" ' +
+      'pattern="[0-9]*" maxlength="4" autocomplete="bday-year" aria-label="出生年份" ' +
+      'placeholder="年" value="' + (yearOk ? y : '') + '">';
 
     var months = '<option value="">月</option>';
     for (var j = 1; j <= 12; j++) months += opt(j, j + ' 月', m === j);
 
-    var maxD = (y && m) ? new Date(y, m, 0).getDate() : 31;
+    var maxD = (yearOk && m) ? new Date(y, m, 0).getDate() : 31;
     if (d && d > maxD) d = maxD;
     var days = '<option value="">日</option>';
     for (var k = 1; k <= maxD; k++) days += opt(k, k + ' 日', d === k);
 
     var live = '';
-    if (y && m && d) {
+    if (yearOk && m && d) {
       var age = L.computeAge({ y: y, m: m, d: d }, now);
       var bad = age < R.ageMin || age > R.ageMax;
-      live = '<p class="live' + (bad ? ' live--warn' : '') + '">按出生日期计算：<b>' + age + ' 周岁</b>' +
-        (bad ? '，不在 18–75 周岁范围内' : '') + '</p>';
+      live = '<p class="live' + (bad ? ' live--warn' : '') + '">出生日期：' + y + ' 年 ' + m + ' 月 ' + d + ' 日 · <b>' +
+        age + ' 周岁</b>' + (bad ? '，不在 18–75 周岁范围内' : '') + '</p>';
+    } else if (y !== null && !yearOk) {
+      live = '<p class="live live--warn">请输入 4 位出生年份，例如 1963</p>';
+    } else if (yearOk && (!m || !d)) {
+      live = '<p class="live">已填 ' + y + ' 年，请再选择月份和日期</p>';
     }
 
     return '<div class="field">' +
       '<p class="field-label">您的出生日期</p>' +
-      '<p class="field-help">本项目要求 18–75 周岁，按出生日期精确计算年龄。</p>' +
+      '<p class="field-help">请输入 4 位出生年份（如 1963），再选月和日；按出生日期精确计算年龄。</p>' +
       '<div class="date-row">' +
-        '<select class="date-select" id="by" aria-label="出生年份">' + years + '</select>' +
+        yearInput +
         '<select class="date-select" id="bm" aria-label="出生月份">' + months + '</select>' +
         '<select class="date-select" id="bd" aria-label="出生日期">' + days + '</select>' +
       '</div>' +
@@ -355,78 +357,24 @@
 
   /* ---------------- 第 4 步：结果 ---------------- */
 
-  function resultText(r) {
-    var lines = [];
-    lines.push('【' + R.projectName + ' · HRCT 筛查自查结果】');
-    lines.push('结论：' + (r.status === 'pass' ? '初步符合' : r.status === 'fail' ? '暂不符合' : '需医生确认'));
-    lines.push('生成时间：' + r.generatedAt);
-    lines.push('');
-    lines.push('基本信息');
-    if (r.age !== null) lines.push('年龄：' + r.age + ' 周岁');
-    if (state.disease === 'ssc') {
-      lines.push('确诊类型：弥漫型 SSc');
-      lines.push('SSc 病程：' + (r.ssc.text || ''));
-    } else if (state.disease === 'ra') {
-      lines.push('确诊类型：类风湿关节炎（RA）');
-      lines.push('高危因素：已满足 ' + r.ra.met + ' / 7 项（要求 ≥2 项）');
-      if (r.ra.metItems.length) {
-        lines.push('　已满足：' + r.ra.metItems.map(function (f) { return f.label; }).join('、'));
-      }
-    }
-    if (r.notMatched.length) {
-      lines.push('');
-      lines.push('不符合的项目');
-      r.notMatched.forEach(function (n, i) { lines.push((i + 1) + '. ' + n.title + '：' + n.detail); });
-    }
-    if (r.pending.length) {
-      lines.push('');
-      lines.push('需要医生确认的项目');
-      r.pending.forEach(function (p, i) {
-        lines.push((i + 1) + '. ' + p.title + (p.how ? '（如何确认：' + p.how + '）' : ''));
-      });
-    }
-    lines.push('');
-    lines.push('报销需要准备的材料');
-    R.materials.forEach(function (m) { lines.push('- ' + m); });
-    lines.push('');
-    lines.push('本页仅用于初步自查，不构成医学诊断，不能替代医生评估。');
-    lines.push('是否入组以项目点医生评估及 HRCT 检查结果为准。');
-    lines.push('规则版本 ' + R.version + ' · 生效 ' + R.effectiveDate);
-    return lines.join('\n');
-  }
-
   function materialsSection() {
     return '<h3 class="sec-title">报销需要准备的材料</h3>' +
-      '<p class="sec-note">以下材料在最终符合项目条件、需要报销时使用。' +
-      '<b>本页面不收集、不上传、不保存任何材料</b>，请勿在此页上传证件照片或银行卡照片。</p>' +
-      '<ul class="checklist">' + R.materials.map(function (m, i) {
-        var on = !!state.materialsChecked[i];
-        return '<li><label class="check check--list' + (on ? ' is-on' : '') + '">' +
-          '<input type="checkbox" name="mat.' + i + '"' + (on ? ' checked' : '') + '>' +
-          '<span class="check__box" aria-hidden="true"></span>' +
-          '<span>' + esc(m) + '</span>' +
-          '</label></li>';
+      '<ul class="mat-list">' + R.materials.map(function (m) {
+        return '<li>' + esc(m) + '</li>';
       }).join('') + '</ul>' +
-      '<p class="sec-note">勾选只保存在本机，不会上传。具体材料要求以项目点通知为准；建议保留发票原件，使用本人银行卡账户。</p>';
+      '<p class="sec-note">以上材料均需拍照，通过邮件提交报销；具体要求以项目通知为准。</p>';
   }
 
   function statusMeta(r) {
     if (r.status === 'pass') {
-      return {
-        cls: 'pass',
-        title: '初步符合',
-        sub: '建议携带资料到项目点，由医生进一步评估'
-      };
+      return { cls: 'pass', icon: '✓', title: '初步符合', sub: '建议携带资料到项目，由医生进一步评估' };
     }
     if (r.status === 'fail') {
-      return {
-        cls: 'fail',
-        title: '暂不符合本项目要求',
-        sub: '以下项目与项目条件不符'
-      };
+      return { cls: 'fail', icon: '✕', title: '暂不符合本项目要求', sub: '以下项目不符合项目条件' };
     }
     return {
       cls: 'need',
+      icon: '!',
       title: '有 ' + r.pending.length + ' 项需要医生确认',
       sub: '这些项目会直接影响结果'
     };
@@ -445,14 +393,14 @@
       rows += '<div class="kv"><span>确诊类型</span><b>类风湿关节炎（RA）</b></div>';
       rows += '<div class="kv"><span>高危因素</span><b>已满足 ' + r.ra.met + ' / 7 项（要求 ≥2 项）</b></div>';
     }
-    return '<h3 class="sec-title">关键信息</h3>' + rows;
+    return rows ? '<div class="kv-list">' + rows + '</div>' : '';
   }
 
   function raDetail(r) {
     if (!r.ra) return '';
     var met = r.ra.metItems.map(function (f) { return '<li class="ok">' + esc(f.label) + '</li>'; }).join('');
     var unsure = r.ra.unsureItems.map(function (f) { return '<li class="warn">' + esc(f.label) + '（待确认）</li>'; }).join('');
-    var unmet = r.ra.unmetItems.map(function (f) { return '<li class="off">' + esc(f.label) + '</li>'; }).join('');
+    var unmet = r.ra.unmetItems.map(function (f) { return '<li class="off">' + esc(f.label) + '（未满足）</li>'; }).join('');
     return '<h3 class="sec-title">高危因素明细</h3><ul class="plain">' + met + unsure + unmet + '</ul>';
   }
 
@@ -479,35 +427,30 @@
     var r = L.evaluate(state, today());
     var m = statusMeta(r);
 
-    var body = '';
-    if (r.status === 'pass') {
-      body = '<p class="status-body">根据您的自查结果，目前没有发现明确不符合本项目条件的情况。</p>';
-    } else if (r.status === 'fail') {
-      body = '<p class="status-body">根据您的自查结果，存在以下不符合项，暂时不符合本项目的筛查条件。' +
-        '如果其中某项填写有误，可以返回修改后重新自查。</p>';
-    } else {
-      body = '<p class="status-body">以下项目您选择了「不清楚」或「记不清」，需要医生结合病历和化验单判断。' +
-        '建议先补齐资料，再决定是否报名。</p>';
-    }
+    var body = r.status === 'fail'
+      ? '<p class="status-body">如其中某项填写有误，可重新自查。</p>'
+      : '';
 
     return '<section class="card status status--' + m.cls + '">' +
         '<p class="status-kicker">自查结果 · ' + esc(r.generatedAt) + '</p>' +
-        '<h2 class="status-title">' + esc(m.title) + '</h2>' +
-        '<p class="status-sub">' + esc(m.sub) + '</p>' +
+        '<div class="status-head">' +
+          '<span class="status-icon" aria-hidden="true">' + m.icon + '</span>' +
+          '<div class="status-head__text">' +
+            '<h2 class="status-title">' + esc(m.title) + '</h2>' +
+            '<p class="status-sub">' + esc(m.sub) + '</p>' +
+          '</div>' +
+        '</div>' +
         body +
+        keyInfo(r) +
       '</section>' +
-      card(keyInfo(r)) +
-      (state.disease === 'ra' ? card(raDetail(r)) : '') +
+      (r.status !== 'fail' ? card(materialsSection()) : '') +
       (r.notMatched.length ? card(notMatchedSection(r)) : '') +
       (r.pending.length ? card(pendingSection(r)) : '') +
-      card(materialsSection()) +
+      (state.disease === 'ra' ? card(raDetail(r)) : '') +
       card(
         '<div class="result-foot">' +
-          '<p class="sec-note">可截图保存本页，或复制文字版发给医生 / 项目点工作人员。</p>' +
-          '<div class="nav nav--stack">' +
-            '<button type="button" class="btn btn--primary" data-act="copy">复制文字版</button>' +
-            '<button type="button" class="btn btn--ghost" data-act="restart">重新自查</button>' +
-          '</div>' +
+          '<p class="sec-note">可截图保存本页，就诊时出示给医生 / 项目工作人员。</p>' +
+          '<button type="button" class="btn btn--ghost" data-act="restart">重新自查</button>' +
           '<p class="sec-note sec-note--small">规则版本 ' + esc(R.version) + ' · 生效 ' + esc(R.effectiveDate) +
             '；本页仅用于初步自查，不构成医学诊断。</p>' +
         '</div>'
@@ -535,20 +478,13 @@
     else window.scrollTo(0, 0);
   }
 
-  function showToast(text) {
-    var t = document.createElement('div');
-    t.className = 'toast';
-    t.textContent = text;
-    document.body.appendChild(t);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      if (t.parentNode) t.parentNode.removeChild(t);
-    }, 1800);
-  }
-
   function validate(step) {
     if (step === 1) {
-      if (!state.birth.y || !state.birth.m || !state.birth.d) return '请选择完整的出生日期。';
+      var maxY = today().getFullYear();
+      if (!state.birth.y || state.birth.y < 1900 || state.birth.y > maxY) {
+        return '请填写 4 位出生年份，例如 1963。';
+      }
+      if (!state.birth.m || !state.birth.d) return '请选择出生月份和日期。';
       if (!state.sex) return '请选择性别。';
       if (!state.disease) return '请选择确诊疾病类型。';
       return '';
@@ -607,30 +543,6 @@
     render(false);
   }
 
-  function doCopy() {
-    var r = L.evaluate(state, today());
-    var text = resultText(r);
-    function fallback() {
-      var ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('readonly', '');
-      ta.style.position = 'fixed';
-      ta.style.top = '-1000px';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); showToast('已复制，可粘贴发送'); }
-      catch (e) { showToast('复制失败，请长按选择文字'); }
-      document.body.removeChild(ta);
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () {
-        showToast('已复制，可粘贴发送');
-      }).catch(fallback);
-    } else {
-      fallback();
-    }
-  }
-
   function restart() {
     state = {
       step: 0,
@@ -640,8 +552,7 @@
       sscStart: { y: null, m: null },
       sscUnknown: false,
       ra: {},
-      exclusions: {},
-      materialsChecked: {}
+      exclusions: {}
     };
     errorMsg = '';
     save();
@@ -655,8 +566,14 @@
     if (act === 'start') { state.step = 1; errorMsg = ''; save(); render(false); }
     else if (act === 'next') goNext();
     else if (act === 'prev') goPrev();
-    else if (act === 'copy') doCopy();
     else if (act === 'restart') restart();
+  });
+
+  app.addEventListener('input', function (e) {
+    if (e.target && e.target.id === 'by') {
+      var v = e.target.value.replace(/[^0-9]/g, '').slice(0, 4);
+      if (v !== e.target.value) e.target.value = v;
+    }
   });
 
   app.addEventListener('change', function (e) {
@@ -671,7 +588,6 @@
     else if (t.name === 'sscUnknown') state.sscUnknown = !!t.checked;
     else if (t.name.indexOf('ra.') === 0) state.ra[t.name.slice(3)] = t.value;
     else if (t.name.indexOf('ex.') === 0) state.exclusions[t.name.slice(3)] = t.value;
-    else if (t.name.indexOf('mat.') === 0) state.materialsChecked[t.name.slice(4)] = !!t.checked;
     else if (t.id === 'by' || t.id === 'bm') {
       state.birth[t.id === 'by' ? 'y' : 'm'] = t.value ? parseInt(t.value, 10) : null;
       if (state.birth.y && state.birth.m && state.birth.d) {
