@@ -23,6 +23,13 @@
     version: 'v1.0',
     effectiveDate: '2026-11-19',
 
+    /* —— 页面与表单地址 —— */
+    siteUrl: 'https://lixiaoyu233.github.io/HRCT/',
+    formUrl: 'https://f.wps.cn/g/RxGbTOfI/',
+    formName: '报销材料收集表',
+    readonlyHash: '#r=',
+    submittedHash: '#submitted',
+
     /* —— 年龄：按出生日期精确计算周岁 —— */
     ageMin: 18,
     ageMax: 75,
@@ -367,6 +374,133 @@
     return out;
   }
 
+  /* ================= 结果二维码：只编码原始答案，不编码结论 ================= */
+
+  var RA_ORDER = ['smoking', 'rf', 'ccp', 'inflammation', 'activity'];
+
+  function answerCode(v) {
+    if (v === 'yes') return 'Y';
+    if (v === 'no') return 'N';
+    if (v === 'unknown') return 'U';
+    if (v === 'quit') return 'Q';
+    if (v === 'current') return 'C';
+    return 'N'; /* never / 未答 */
+  }
+
+  function codeToAnswer(c, kind) {
+    if (kind === 'smoking') {
+      if (c === 'N') return 'never';
+      if (c === 'Q') return 'quit';
+      if (c === 'C') return 'current';
+      return '';
+    }
+    if (c === 'Y') return 'yes';
+    if (c === 'N') return 'no';
+    if (c === 'U') return 'unknown';
+    return '';
+  }
+
+  /* 4 位十六进制校验码，防止二维码内容被无意改坏 */
+  function checksum16(str) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = (h * 0x01000193) >>> 0;
+    }
+    return ('0000' + (h & 0xffff).toString(16)).slice(-4).toUpperCase();
+  }
+
+  function encodeInput(input, ts) {
+    var b = input.birth || {};
+    var sscStart = '-';
+    if (input.disease === 'ssc' && !input.sscUnknown &&
+        input.sscStart && input.sscStart.y && input.sscStart.m) {
+      sscStart = String(input.sscStart.y) + pad(input.sscStart.m);
+    }
+    var ra = '-';
+    if (input.disease === 'ra') {
+      ra = RA_ORDER.map(function (id) {
+        return answerCode(input.ra ? input.ra[id] : '');
+      }).join('');
+    }
+    var ex = RULES.exclusions.map(function (e) {
+      return answerCode(input.exclusions ? input.exclusions[e.id] : '');
+    }).join('');
+    var body = [
+      '1',
+      String(ts),
+      String(b.y) + pad(b.m) + pad(b.d),
+      input.sex === 'male' ? 'M' : 'F',
+      input.disease === 'ssc' ? 'SS' : 'RA',
+      sscStart,
+      ra,
+      ex
+    ].join('.');
+    return body + '.' + checksum16(body);
+  }
+
+  function decodeInput(payload) {
+    if (typeof payload !== 'string' || !payload) throw new Error('二维码内容为空');
+    var seg = payload.split('.');
+    if (seg.length !== 9) throw new Error('二维码内容不完整');
+    if (seg[0] !== '1') throw new Error('二维码版本不支持');
+    if (!/^[0-9]{10}$/.test(seg[1])) throw new Error('时间格式不正确');
+    if (!/^[0-9]{8}$/.test(seg[2])) throw new Error('出生日期格式不正确');
+    if (checksum16(seg.slice(0, 8).join('.')) !== seg[8]) {
+      throw new Error('二维码数据校验未通过（内容可能被改动）');
+    }
+    var by = parseInt(seg[2].slice(0, 4), 10);
+    var bm = parseInt(seg[2].slice(4, 6), 10);
+    var bd = parseInt(seg[2].slice(6, 8), 10);
+    if (bm < 1 || bm > 12 || bd < 1 || bd > 31) throw new Error('出生日期不合法');
+    if (seg[3] !== 'M' && seg[3] !== 'F') throw new Error('性别信息不合法');
+    var disease = seg[4] === 'SS' ? 'ssc' : seg[4] === 'RA' ? 'ra' : null;
+    if (!disease) throw new Error('疾病类型不合法');
+
+    var input = {
+      birth: { y: by, m: bm, d: bd },
+      sex: seg[3] === 'M' ? 'male' : 'female',
+      disease: disease,
+      sscStart: null,
+      sscUnknown: false,
+      ra: {},
+      exclusions: {}
+    };
+
+    if (disease === 'ssc') {
+      if (seg[5] === '-') {
+        input.sscUnknown = true;
+      } else if (/^[0-9]{6}$/.test(seg[5])) {
+        input.sscStart = { y: parseInt(seg[5].slice(0, 4), 10), m: parseInt(seg[5].slice(4, 6), 10) };
+      } else {
+        throw new Error('病程时间格式不正确');
+      }
+      if (seg[6] !== '-') throw new Error('RA 数据不合法');
+    } else {
+      if (!/^[YNQCU]{5}$/.test(seg[6])) throw new Error('高危因素数据不合法');
+      for (var i = 0; i < 5; i++) {
+        var ch = seg[6].charAt(i);
+        if (i === 0) {
+          if ('NQC'.indexOf(ch) < 0) throw new Error('吸烟史数据不合法');
+        } else if ('YNU'.indexOf(ch) < 0) {
+          throw new Error('高危因素数据不合法');
+        }
+        input.ra[RA_ORDER[i]] = codeToAnswer(ch, i === 0 ? 'smoking' : 'tri');
+      }
+    }
+
+    if (!/^[YNU]{9}$/.test(seg[7])) throw new Error('排除条件数据不合法');
+    RULES.exclusions.forEach(function (e, idx) {
+      input.exclusions[e.id] = codeToAnswer(seg[7].charAt(idx), 'tri');
+    });
+
+    return { input: input, ts: parseInt(seg[1], 10) };
+  }
+
+  function buildResultUrl(payload) {
+    return RULES.siteUrl + RULES.readonlyHash + payload;
+  }
+
   return {
     RULES: RULES,
     TRI: TRI,
@@ -374,6 +508,9 @@
     monthsBetween: monthsBetween,
     formatDuration: formatDuration,
     stamp: stamp,
-    evaluate: evaluate
+    evaluate: evaluate,
+    encodeInput: encodeInput,
+    decodeInput: decodeInput,
+    buildResultUrl: buildResultUrl
   };
 });
