@@ -139,6 +139,63 @@ ok(R.exclusions.length === 9, '排除条件共 9 项', String(R.exclusions.lengt
 ok(R.materials.length === 7, '报销材料共 7 项', String(R.materials.length));
 ok(R.raMinFactors === 2 && R.sscMaxMonths === 60 && R.ageMin === 18 && R.ageMax === 75, '阈值配置正确', '');
 
+
+/* ---------- 结果二维码：编码 / 解码 ---------- */
+function sscInput() {
+  return {
+    birth: { y: 1963, m: 5, d: 10 }, sex: 'female', disease: 'ssc',
+    sscStart: { y: 2025, m: 6 }, sscUnknown: false, ra: {}, exclusions: exAll('no')
+  };
+}
+function raInput() {
+  return {
+    birth: { y: 1958, m: 2, d: 3 }, sex: 'male', disease: 'ra',
+    sscStart: null, sscUnknown: false,
+    ra: { smoking: 'current', rf: 'yes', ccp: 'unknown', inflammation: 'no', activity: 'no' },
+    exclusions: Object.assign(exAll('no'), { e16: 'unknown' })
+  };
+}
+
+var TS = 1795000000;
+var p1 = L.encodeInput(sscInput(), TS);
+var d1 = L.decodeInput(p1);
+ok(JSON.stringify(d1.input) === JSON.stringify(sscInput()), 'SSc 答案编码→解码完全还原', p1);
+ok(d1.ts === TS, '时间戳还原', String(d1.ts));
+ok(L.evaluate(d1.input, new Date(TS * 1000)).status === 'pass', '解码后重算结论一致（初步符合）', '');
+ok(/^[0-9A-Z.-]+$/.test(p1), '二维码载荷仅含 URL 安全字符', p1);
+
+var p2 = L.encodeInput(raInput(), TS);
+var d2 = L.decodeInput(p2);
+ok(JSON.stringify(d2.input) === JSON.stringify(raInput()), 'RA 答案编码→解码完全还原', p2);
+ok(L.evaluate(d2.input, new Date(TS * 1000)).status === 'need' ||
+   L.evaluate(d2.input, new Date(TS * 1000)).status === 'pass', '解码后重算结论有效', '');
+
+var url = L.buildResultUrl(p1);
+ok(url.indexOf('https://lixiaoyu233.github.io/HRCT/#r=') === 0, '二维码链接格式正确', url);
+ok(url.length < 160, '二维码链接长度可控（<160 字符）', String(url.length));
+
+/* 篡改检测 */
+var tampered = p1.slice(0, -5) + (p1.slice(-5, -4) === 'Y' ? 'Z' : 'Y') + p1.slice(-4);
+var caught = false;
+try { L.decodeInput(tampered); } catch (e) { caught = true; }
+ok(caught, '载荷被改动时拒绝解析', tampered);
+
+var badVer = '2' + p1.slice(1);
+caught = false;
+try { L.decodeInput(badVer); } catch (e) { caught = true; }
+ok(caught, '版本号不对时拒绝解析', '');
+
+caught = false;
+try { L.decodeInput('abc.def'); } catch (e) { caught = true; }
+ok(caught, '残缺二维码内容拒绝解析', '');
+
+ok(L.decodeInput(L.encodeInput(sscInput(), TS)).input.sscUnknown === false, 'SSc 病程未知标记正确', '');
+var unknownInput = sscInput();
+unknownInput.sscUnknown = true;
+unknownInput.sscStart = null;
+var d3 = L.decodeInput(L.encodeInput(unknownInput, TS));
+ok(d3.input.sscUnknown === true && d3.input.sscStart === null, '「记不清病程」可编码还原', '');
+
 console.log('');
 console.log(fails === 0 ? '全部通过：' + total + ' 项' : '失败 ' + fails + ' / ' + total + ' 项');
 process.exit(fails === 0 ? 0 : 1);
