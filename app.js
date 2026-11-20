@@ -357,12 +357,23 @@
 
   /* ---------------- 第 4 步：结果 ---------------- */
 
-  function materialsSection() {
+  function materialsSection(r) {
+    var tail = '';
+    if (r && r.status === 'pass') {
+      tail = '<div class="submit-block">' +
+          '<p class="submit-hint">材料准备好后，点击下方按钮填写《' + esc(R.formName) + '》</p>' +
+          '<a class="btn btn--primary" href="' + esc(R.formUrl) + '" rel="noopener">去提交报销材料</a>' +
+          '<p class="submit-note">如无法打开，请联系项目工作人员。</p>' +
+        '</div>';
+    } else if (r && r.status === 'need') {
+      tail = '<p class="sec-note">请先与医生确认上面的待确认项目，确认符合后重新自查，再提交材料。</p>';
+    }
     return '<h3 class="sec-title">报销需要准备的材料</h3>' +
       '<ul class="mat-list">' + R.materials.map(function (m) {
         return '<li>' + esc(m) + '</li>';
       }).join('') + '</ul>' +
-      '<p class="sec-note">以上材料均需拍照，通过邮件提交报销；具体要求以项目通知为准。</p>';
+      '<p class="sec-note">以上材料均需拍照，通过邮件提交报销；具体要求以项目通知为准。</p>' +
+      tail;
   }
 
   function statusMeta(r) {
@@ -442,8 +453,18 @@
         '</div>' +
         body +
         keyInfo(r) +
+        (r.status === 'pass'
+          ? '<div class="qr-block">' +
+              '<div class="qr-box" id="qrBox"></div>' +
+              '<div class="qr-text">' +
+                '<p class="qr-title">扫一扫查看自查明细</p>' +
+                '<p class="qr-sub">供医生 / 项目工作人员核对</p>' +
+                '<p class="qr-hint">长按二维码可保存</p>' +
+              '</div>' +
+            '</div>'
+          : '') +
       '</section>' +
-      (r.status !== 'fail' ? card(materialsSection()) : '') +
+      (r.status !== 'fail' ? card(materialsSection(r)) : '') +
       (r.notMatched.length ? card(notMatchedSection(r)) : '') +
       (r.pending.length ? card(pendingSection(r)) : '') +
       (state.disease === 'ra' ? card(raDetail(r)) : '') +
@@ -455,6 +476,151 @@
             '；本页仅用于初步自查，不构成医学诊断。</p>' +
         '</div>'
       );
+  }
+
+  /* ---------------- 结果二维码 ---------------- */
+
+  function siteBase() {
+    if (typeof location !== 'undefined' && /^https?:$/.test(location.protocol)) {
+      return location.origin + location.pathname;
+    }
+    return R.siteUrl;
+  }
+
+  function mountQr() {
+    var box = document.getElementById('qrBox');
+    if (!box) return;
+    if (typeof qrcode !== 'function') {
+      box.innerHTML = '<p class="qr-error">二维码生成失败</p>';
+      return;
+    }
+    try {
+      var ts = Math.floor(Date.now() / 1000);
+      var payload = L.encodeInput(state, ts);
+      var url = siteBase() + R.readonlyHash + payload;
+      var qr = qrcode(0, 'M');
+      qr.addData(url);
+      qr.make();
+      var count = qr.getModuleCount();
+      var scale = 8;
+      var margin = 2;
+      var size = (count + margin * 2) * scale;
+      var canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      var ctx = canvas.getContext ? canvas.getContext('2d') : null;
+      if (!ctx) throw new Error('canvas unsupported');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+      ctx.fillStyle = '#000000';
+      for (var row = 0; row < count; row++) {
+        for (var col = 0; col < count; col++) {
+          if (qr.isDark(row, col)) {
+            ctx.fillRect((col + margin) * scale, (row + margin) * scale, scale, scale);
+          }
+        }
+      }
+      var img = document.createElement('img');
+      img.alt = '自查结果二维码';
+      img.src = canvas.toDataURL('image/png');
+      box.appendChild(img);
+    } catch (e) {
+      box.innerHTML = '<p class="qr-error">二维码生成失败</p>';
+    }
+  }
+
+  /* ---------------- 只读回放（扫码查看） ---------------- */
+
+  function fmtTs(ts) {
+    return L.stamp(new Date(ts * 1000));
+  }
+
+  function answerText(v) {
+    if (v === 'yes') return '是';
+    if (v === 'no') return '否';
+    if (v === 'unknown') return '不清楚';
+    return '未作答';
+  }
+
+  function viewReadonly(payload) {
+    var parsed;
+    try {
+      parsed = L.decodeInput(payload);
+    } catch (err) {
+      return card(
+        '<h2 class="step-title">无法读取自查结果</h2>' +
+        '<p class="sec-note">' + esc(err.message) + '。请让患者重新生成二维码。</p>' +
+        '<div class="nav"><a class="btn btn--ghost" href="' + esc(siteBase()) + '">返回自查页</a></div>'
+      );
+    }
+    var input = parsed.input;
+    var r = L.evaluate(input, new Date(parsed.ts * 1000));
+    var m = statusMeta(r);
+
+    var rows = '<div class="kv"><span>填写时间</span><b>' + esc(fmtTs(parsed.ts)) + '</b></div>';
+    if (r.age !== null) rows += '<div class="kv"><span>年龄</span><b>' + r.age + ' 周岁</b></div>';
+    rows += '<div class="kv"><span>确诊类型</span><b>' +
+      (input.disease === 'ssc' ? '弥漫型 SSc' : '类风湿关节炎（RA）') + '</b></div>';
+
+    var detail = '';
+    if (input.disease === 'ssc') {
+      detail += '<div class="kv"><span>非雷诺症状出现时间</span><b>' +
+        (input.sscStart ? (input.sscStart.y + ' 年 ' + input.sscStart.m + ' 月') : '记不清') + '</b></div>';
+      detail += '<div class="kv"><span>SSc 病程</span><b>' + esc(r.ssc.text || '') + '</b></div>';
+    } else {
+      detail += '<ul class="plain qr-plain">' + R.raFactors.map(function (f) {
+        var val;
+        if (f.auto === 'age') val = (r.age !== null && r.age > 60) ? '是' : '否';
+        else if (f.auto === 'sex') val = input.sex === 'male' ? '是' : '否';
+        else val = answerText(input.ra[f.id]);
+        return '<li class="' + (val === '是' ? 'bad' : 'off') + '">' +
+          esc(f.label) + '：' + val + '</li>';
+      }).join('') + '</ul>';
+    }
+
+    var exList = '<ul class="plain qr-plain">' + R.exclusions.map(function (e) {
+      var v = input.exclusions[e.id];
+      var cls = v === 'yes' ? 'bad' : (v === 'unknown' ? 'warn' : 'off');
+      return '<li class="' + cls + '">' + esc(e.label) + '：' + answerText(v) + '</li>';
+    }).join('') + '</ul>';
+
+    var pending = r.pending.length
+      ? '<h3 class="sec-title">需要医生确认的项目</h3><ul class="pending-list">' +
+        r.pending.map(function (p) {
+          return '<li><p class="pending-list__title">' + esc(p.title) + '</p></li>';
+        }).join('') + '</ul>'
+      : '';
+
+    return '<section class="card status status--' + m.cls + '">' +
+        '<p class="status-kicker">自查结果回放 · ' + esc(fmtTs(parsed.ts)) + '</p>' +
+        '<div class="status-head">' +
+          '<span class="status-icon" aria-hidden="true">' + m.icon + '</span>' +
+          '<div class="status-head__text">' +
+            '<h2 class="status-title">' + esc(m.title) + '</h2>' +
+            '<p class="status-sub">' + esc(m.sub) + '</p>' +
+          '</div>' +
+        '</div>' +
+        '<div class="kv-list">' + rows + detail + '</div>' +
+      '</section>' +
+      card('<h3 class="sec-title">排除条件</h3>' + exList) +
+      (pending ? card(pending) : '') +
+      card(
+        '<p class="sec-note">本页数据由患者出示的二维码生成，页面不保存、不上传任何信息；结论按填写时间重新计算，仅作初步自查参考。</p>' +
+        '<div class="nav"><a class="btn btn--ghost" href="' + esc(siteBase()) + '">返回自查页</a></div>' +
+        '<p class="sec-note sec-note--small">规则版本 ' + esc(r.rules.version) + ' · 生效 ' + esc(r.rules.effectiveDate) + '</p>'
+      );
+  }
+
+  /* ---------------- 提交成功页 ---------------- */
+
+  function viewSubmitted() {
+    return card(
+      '<span class="done-icon" aria-hidden="true">✓</span>' +
+      '<h2 class="step-title done-title">材料已提交</h2>' +
+      '<p class="status-body">我们已收到您的报销材料。审核结果会通过您填写的联系方式通知您；如需补充材料，工作人员会与您联系。</p>' +
+      '<p class="sec-note">本页仅为提交确认，不保存任何材料内容。</p>' +
+      '<div class="nav"><a class="btn btn--ghost" href="' + esc(siteBase()) + '">返回自查页</a></div>'
+    );
   }
 
   /* ---------------- 渲染与事件 ---------------- */
@@ -474,6 +640,7 @@
     var y = window.scrollY;
     app.innerHTML = view();
     updateProgress();
+    if (state.step === 4) mountQr();
     if (keepScroll) window.scrollTo(0, y);
     else window.scrollTo(0, 0);
   }
@@ -606,6 +773,16 @@
   });
 
   /* ---------------- 启动 ---------------- */
+
+  var initHash = window.location.hash || '';
+  if (initHash.indexOf(R.readonlyHash) === 0) {
+    app.innerHTML = viewReadonly(initHash.slice(R.readonlyHash.length));
+    return;
+  }
+  if (initHash.indexOf(R.submittedHash) === 0) {
+    app.innerHTML = viewSubmitted();
+    return;
+  }
 
   load();
   if (state.step >= 4) {
