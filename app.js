@@ -621,17 +621,25 @@
     if (!img) return;
     var overlay = document.createElement('div');
     overlay.className = 'viewer';
-    overlay.innerHTML = '<div class="viewer__box">' +
-      '<p class="viewer__tip">长按图片保存到相册</p>' +
-      '<div class="viewer__img"><img alt="自查结果卡" src="' + img.src + '"></div>' +
-      '<button type="button" class="btn btn--ghost viewer__close">关闭</button>' +
-      '</div>';
+    overlay.innerHTML = '<div class="viewer__bar">' +
+        '<span class="viewer__tip">长按图片保存到相册</span>' +
+        '<button type="button" class="viewer__close" data-close="1" aria-label="关闭">✕</button>' +
+      '</div>' +
+      '<div class="viewer__scroll"><img alt="自查结果卡" src="' + img.src + '"></div>';
     document.body.appendChild(overlay);
+
+    function close() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') close();
+    }
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay || e.target.className === 'viewer__close') {
-        document.body.removeChild(overlay);
-      }
+      var t = e.target;
+      if (t === overlay || (t.closest && t.closest('[data-close]'))) close();
     });
+    document.addEventListener('keydown', onKey);
   }
 
   /* ---------------- 只读回放（扫码查看） ---------------- */
