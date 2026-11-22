@@ -459,7 +459,7 @@
               '<div class="qr-box" id="qrBox"></div>' +
               '<div class="qr-text">' +
                 '<p class="qr-title">扫一扫查看自查明细</p>' +
-                '<p class="qr-sub">供医生 / 项目工作人员核对</p>' +
+                '<p class="qr-sub">供项目工作人员核对</p>' +
                 '<p class="qr-hint">长按二维码可保存</p>' +
               '</div>' +
             '</div>'
@@ -471,7 +471,7 @@
       (state.disease === 'ra' ? card(raDetail(r)) : '') +
       card(
         '<div class="result-foot">' +
-          '<p class="sec-note">可截图保存本页，就诊时出示给医生 / 项目工作人员。</p>' +
+          '<p class="sec-note">可截图保存本页。</p>' +
           '<button type="button" class="btn btn--ghost" data-act="restart">重新自查</button>' +
           '<p class="sec-note sec-note--small">规则版本 ' + esc(R.version) + ' · 生效 ' + esc(R.effectiveDate) +
             '；本页仅用于初步自查，不构成医学诊断。</p>' +
@@ -480,7 +480,7 @@
       (r.status === 'pass'
         ? card(
             '<h3 class="sec-title">自查结果卡</h3>' +
-            '<p class="sec-note">长按下方图片可保存，发给医生或项目工作人员；也可以直接截图本页。</p>' +
+            '<p class="sec-note">长按下方图片保存到相册；提交报销材料时，在《报销材料收集表》中上传这张图。</p>' +
             '<div class="result-card" id="cardBox"><p class="sec-note">正在生成…</p></div>' +
             '<button type="button" class="btn btn--ghost" data-act="savecard">保存结果卡</button>' +
             '<p class="sec-note sec-note--small">提交报销材料时需要上传这张结果卡，请先保存到相册；长按图片即可保存。</p>'
@@ -528,7 +528,7 @@
         materials: R.materials,
         materialsNote: '以上材料在完成 HRCT 检查后拍照，连同本页结果卡一起，在《' + R.formName + '》中提交。',
         notes: ['发票抬头请填写患者本人姓名；银行卡须为患者本人账户。'],
-        qr: qr ? { qr: qr, caption: '扫码查看自查明细（供医生 / 项目工作人员核对）' } : null,
+        qr: qr ? { qr: qr, caption: '扫码查看自查明细（供项目工作人员核对）' } : null,
         footer: {
           time: '生成时间 · ' + r.generatedAt,
           version: '规则版本 ' + R.version + ' · 生效 ' + R.effectiveDate,
