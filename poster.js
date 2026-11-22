@@ -186,28 +186,48 @@
       });
     }
 
-    /* 二维码 */
-    if (opt.qr && opt.qr.qr) {
-      var qr = opt.qr.qr;
-      var n = qr.getModuleCount();
-      var target = opt.qr.size || 300;
+    /* 二维码：单个居中；有两个则并排（自查明细 + 提交报销材料） */
+    function drawOne(q, cx, top, target) {
+      var n = q.getModuleCount();
       var scale = Math.max(2, Math.floor(target / n));
       var qw = n * scale;
-      var qx = Math.round((W - qw) / 2);
-      y += 26;
+      var x = Math.round(cx - qw / 2);
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(qx - 26, y - 26, qw + 52, qw + 52);
+      ctx.fillRect(x - 24, top - 24, qw + 48, qw + 48);
       ctx.strokeStyle = LINE;
       ctx.lineWidth = 2;
-      ctx.strokeRect(qx - 26, y - 26, qw + 52, qw + 52);
+      ctx.strokeRect(x - 24, top - 24, qw + 48, qw + 48);
       ctx.fillStyle = '#000000';
-      for (var row = 0; row < n; row++) {
-        for (var col = 0; col < n; col++) {
-          if (qr.isDark(row, col)) {
-            ctx.fillRect(qx + col * scale, y + row * scale, scale, scale);
-          }
+      for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+          if (q.isDark(r, c)) ctx.fillRect(x + c * scale, top + r * scale, scale, scale);
         }
       }
+      return qw;
+    }
+
+    function drawCaption(cap, cx, top, maxW) {
+      var lines = wrap(ctx, cap || '', maxW, 24, false);
+      lines.slice(0, 2).forEach(function (ln, i) {
+        text(ctx, ln, cx, top + i * 32, 24, MUTED, false, 'center');
+      });
+      return Math.min(lines.length, 2) * 32;
+    }
+
+    if (opt.qr && opt.qr.qr && opt.qr2 && opt.qr2.qr) {
+      var colW = (W - PAD * 2) / 2;
+      var cx1 = PAD + colW / 2;
+      var cx2 = PAD + colW * 1.5;
+      y += 26;
+      var t1 = drawOne(opt.qr.qr, cx1, y, 240);
+      var t2 = drawOne(opt.qr2.qr, cx2, y, 240);
+      y += Math.max(t1, t2) + 52;
+      drawCaption(opt.qr.caption, cx1, y, colW - 24);
+      drawCaption(opt.qr2.caption, cx2, y, colW - 24);
+      y += 32 * 2 + 18;
+    } else if (opt.qr && opt.qr.qr) {
+      y += 26;
+      var qw = drawOne(opt.qr.qr, W / 2, y, 300);
       y += qw + 56;
       text(ctx, opt.qr.caption || '', W / 2, y, 26, MUTED, false, 'center');
       y += 30 + 30;
