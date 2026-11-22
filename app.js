@@ -500,12 +500,15 @@
     try {
       var r = L.evaluate(state, today());
       var m = statusMeta(r);
-      var qr = null;
+      var qr = null, qr2 = null;
       if (r.status === 'pass') {
         var url = (qrCache && qrCache.url) || buildQrUrl();
         qr = qrcode(0, 'M');
         qr.addData(url);
         qr.make();
+        qr2 = qrcode(0, 'M');
+        qr2.addData(R.formUrl);
+        qr2.make();
       }
       var rows = [];
       if (r.age !== null) rows.push(['年龄', r.age + ' 周岁']);
@@ -528,7 +531,8 @@
         materials: R.materials,
         materialsNote: '以上材料在完成 HRCT 检查后拍照，连同本页结果卡一起，在《' + R.formName + '》中提交。',
         notes: ['发票抬头请填写患者本人姓名；银行卡须为患者本人账户。'],
-        qr: qr ? { qr: qr, caption: '扫码查看自查明细（供项目工作人员核对）' } : null,
+        qr: qr ? { qr: qr, caption: '扫码看自查明细' } : null,
+        qr2: qr2 ? { qr: qr2, caption: '扫码交报销材料' } : null,
         footer: {
           time: '生成时间 · ' + r.generatedAt,
           version: '规则版本 ' + R.version + ' · 生效 ' + R.effectiveDate,
@@ -619,6 +623,11 @@
     var box = document.getElementById('cardBox');
     var img = box ? box.querySelector('img') : null;
     if (!img) return;
+    /* 防止连点生成多层弹层：先清掉已有的 */
+    var stale = document.querySelectorAll('.viewer');
+    for (var si = 0; si < stale.length; si++) {
+      if (stale[si].parentNode) stale[si].parentNode.removeChild(stale[si]);
+    }
     var overlay = document.createElement('div');
     overlay.className = 'viewer';
     overlay.innerHTML = '<div class="viewer__bar">' +
@@ -637,8 +646,21 @@
     }
     overlay.addEventListener('click', function (e) {
       var t = e.target;
-      if (t === overlay || (t.closest && t.closest('[data-close]'))) close();
+      if (t === overlay || (t.closest && t.closest('[data-close]')) || (t.closest && t.closest('.viewer__bar'))) close();
     });
+    /* 直接绑到按钮上，不依赖事件委托（部分微信内核存在 click 丢失） */
+    var closeBtn = overlay.querySelector('[data-close]');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      });
+      closeBtn.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        close();
+      }, { passive: false });
+    }
     document.addEventListener('keydown', onKey);
   }
 
