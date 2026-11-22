@@ -361,8 +361,8 @@
     var tail = '';
     if (r && r.status === 'pass') {
       tail = '<div class="submit-block">' +
-          '<p class="submit-hint">材料准备好后，点击下方按钮填写《' + esc(R.formName) + '》</p>' +
-          '<a class="btn btn--primary" href="' + esc(R.formUrl) + '" rel="noopener">去提交报销材料</a>' +
+          '<p class="submit-hint">完成 HRCT 检查、拿到报告和发票后，点击下方按钮填写《' + esc(R.formName) + '》</p>' +
+          '<a class="btn btn--primary" href="' + esc(R.formUrl) + '" rel="noopener">已完成检查，去提交报销材料</a>' +
           '<p class="submit-note">如无法打开，请联系项目工作人员。</p>' +
         '</div>';
     } else if (r && r.status === 'need') {
@@ -372,7 +372,8 @@
       '<ul class="mat-list">' + R.materials.map(function (m) {
         return '<li>' + esc(m) + '</li>';
       }).join('') + '</ul>' +
-      '<p class="sec-note">以上材料均需拍照，通过邮件提交报销；具体要求以项目通知为准。</p>' +
+      '<p class="sec-note">以上材料在完成 HRCT 检查后拍照，连同本页结果卡一起，在《' + esc(R.formName) + '》中提交。</p>' +
+      '<p class="sec-note sec-note--warn">发票抬头请填写<b>患者本人姓名</b>；银行卡须为<b>患者本人</b>账户。</p>' +
       tail;
   }
 
@@ -475,7 +476,84 @@
           '<p class="sec-note sec-note--small">规则版本 ' + esc(R.version) + ' · 生效 ' + esc(R.effectiveDate) +
             '；本页仅用于初步自查，不构成医学诊断。</p>' +
         '</div>'
-      );
+      ) +
+      (r.status === 'pass'
+        ? card(
+            '<h3 class="sec-title">自查结果卡</h3>' +
+            '<p class="sec-note">长按下方图片可保存，发给医生或项目工作人员；也可以直接截图本页。</p>' +
+            '<div class="result-card" id="cardBox"><p class="sec-note">正在生成…</p></div>' +
+            '<button type="button" class="btn btn--ghost" data-act="savecard">保存结果卡</button>' +
+            '<p class="sec-note sec-note--small">提交报销材料时需要上传这张结果卡，请先保存到相册；长按图片即可保存。</p>'
+          )
+        : '');
+  }
+
+  /* ---------------- 结果卡图片 ---------------- */
+
+  function mountCard() {
+    var box = document.getElementById('cardBox');
+    if (!box) return;
+    if (typeof qrcode !== 'function' || !window.HRCTPoster) {
+      box.innerHTML = '<p class="card-error">结果卡生成失败，请直接截图本页。</p>';
+      return;
+    }
+    try {
+      var r = L.evaluate(state, today());
+      var m = statusMeta(r);
+      var qr = null;
+      if (r.status === 'pass') {
+        var url = (qrCache && qrCache.url) || buildQrUrl();
+        qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+      }
+      var rows = [];
+      if (r.age !== null) rows.push(['年龄', r.age + ' 周岁']);
+      if (state.disease === 'ssc') {
+        rows.push(['确诊类型', '弥漫型 SSc']);
+        rows.push(['SSc 病程', r.ssc.text || '']);
+      } else {
+        rows.push(['确诊类型', '类风湿关节炎（RA）']);
+        rows.push(['高危因素', '已满足 ' + r.ra.met + ' / 7 项（要求 ≥2 项）']);
+      }
+      var data = {
+        width: 750,
+        maxHeight: 2600,
+        org: R.org,
+        project: R.projectName,
+        subtitle: 'HRCT 筛查自查结果',
+        status: { cls: m.cls, title: m.title, sub: m.sub },
+        rows: rows,
+        badge: (r.status === 'pass' && r.ssc && r.ssc.priority) ? '优先推荐签署' : null,
+        materials: R.materials,
+        materialsNote: '以上材料在完成 HRCT 检查后拍照，连同本页结果卡一起，在《' + R.formName + '》中提交。',
+        notes: ['发票抬头请填写患者本人姓名；银行卡须为患者本人账户。'],
+        qr: qr ? { qr: qr, caption: '扫码查看自查明细（供医生 / 项目工作人员核对）' } : null,
+        footer: {
+          time: '生成时间 · ' + r.generatedAt,
+          version: '规则版本 ' + R.version + ' · 生效 ' + R.effectiveDate,
+          disclaimer: '本页仅用于初步自查，不构成医学诊断，不能替代医生评估。'
+        }
+      };
+      var temp = document.createElement('canvas');
+      temp.width = 750;
+      temp.height = 2600;
+      var tctx = temp.getContext ? temp.getContext('2d') : null;
+      if (!tctx) throw new Error('canvas unsupported');
+      var height = window.HRCTPoster.draw(tctx, data);
+      var out = document.createElement('canvas');
+      out.width = 750;
+      out.height = height;
+      out.getContext('2d').drawImage(temp, 0, 0);
+      var img = document.createElement('img');
+      img.className = 'result-card__img';
+      img.alt = '自查结果卡';
+      img.src = out.toDataURL('image/png');
+      box.innerHTML = '';
+      box.appendChild(img);
+    } catch (e) {
+      box.innerHTML = '<p class="card-error">结果卡生成失败，请直接截图本页。</p>';
+    }
   }
 
   /* ---------------- 结果二维码 ---------------- */
@@ -487,6 +565,13 @@
     return R.siteUrl;
   }
 
+  var qrCache = null;
+
+  function buildQrUrl() {
+    var ts = Math.floor(Date.now() / 1000);
+    return siteBase() + R.readonlyHash + L.encodeInput(state, ts);
+  }
+
   function mountQr() {
     var box = document.getElementById('qrBox');
     if (!box) return;
@@ -495,9 +580,8 @@
       return;
     }
     try {
-      var ts = Math.floor(Date.now() / 1000);
-      var payload = L.encodeInput(state, ts);
-      var url = siteBase() + R.readonlyHash + payload;
+      var url = buildQrUrl();
+      qrCache = { url: url };
       var qr = qrcode(0, 'M');
       qr.addData(url);
       qr.make();
@@ -527,6 +611,27 @@
     } catch (e) {
       box.innerHTML = '<p class="qr-error">二维码生成失败</p>';
     }
+  }
+
+  /* ---------------- 结果卡大图查看 ---------------- */
+
+  function openCardViewer() {
+    var box = document.getElementById('cardBox');
+    var img = box ? box.querySelector('img') : null;
+    if (!img) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'viewer';
+    overlay.innerHTML = '<div class="viewer__box">' +
+      '<p class="viewer__tip">长按图片保存到相册</p>' +
+      '<div class="viewer__img"><img alt="自查结果卡" src="' + img.src + '"></div>' +
+      '<button type="button" class="btn btn--ghost viewer__close">关闭</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay || e.target.className === 'viewer__close') {
+        document.body.removeChild(overlay);
+      }
+    });
   }
 
   /* ---------------- 只读回放（扫码查看） ---------------- */
@@ -640,7 +745,7 @@
     var y = window.scrollY;
     app.innerHTML = view();
     updateProgress();
-    if (state.step === 4) mountQr();
+    if (state.step === 4) { mountQr(); mountCard(); }
     if (keepScroll) window.scrollTo(0, y);
     else window.scrollTo(0, 0);
   }
@@ -734,6 +839,7 @@
     else if (act === 'next') goNext();
     else if (act === 'prev') goPrev();
     else if (act === 'restart') restart();
+    else if (act === 'savecard') openCardViewer();
   });
 
   app.addEventListener('input', function (e) {
