@@ -136,7 +136,7 @@ ok(L.formatDuration(7) === '7 个月', 'formatDuration 7', L.formatDuration(7));
 ok(R.raFactors.length === 7, 'RA 高危因素共 7 项', String(R.raFactors.length));
 ok(R.raFactors.filter(function (f) { return !!f.q; }).length === 5, '实际提问的 RA 项为 5 个', '');
 ok(R.exclusions.length === 9, '排除条件共 9 项', String(R.exclusions.length));
-ok(R.materials.length === 7, '报销材料共 7 项', String(R.materials.length));
+ok(R.materials.length === 8, '报销材料共 8 项', String(R.materials.length));
 ok(R.raMinFactors === 2 && R.sscMaxMonths === 60 && R.ageMin === 18 && R.ageMax === 75, '阈值配置正确', '');
 
 
